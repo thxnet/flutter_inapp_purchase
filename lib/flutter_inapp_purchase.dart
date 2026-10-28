@@ -691,10 +691,10 @@ class FlutterInappPurchase {
         code: _platform.operatingSystem, message: "platform not supported");
   }
 }
+
 /// A list of valid values for ReplacementMode parameter
 /// Check [https://developer.android.com/reference/com/android/billingclient/api/BillingFlowParams.SubscriptionUpdateParams.ReplacementMode] for valid values
 class AndroidReplacementMode {
-
   /// The new plan takes effect immediately, and the user is charged the full price of the new plan and is given a full billing cycle of the subscription, plus remaining prorated time from the old plan.
   static const int CHARGE_FULL_PRICE = 5;
 
