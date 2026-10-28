@@ -81,7 +81,7 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
             
             billingClient = BillingClient.newBuilder(context ?: return).apply {
                 setListener(purchasesUpdatedListener)
-                enablePendingPurchases()
+                enablePendingPurchases(PendingPurchasesParams.newBuilder().enableOneTimeProducts().build())
             }.build()
             
             billingClient?.startConnection(object : BillingClientStateListener {
@@ -365,35 +365,33 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
         safeChannel: MethodResultWrapper
     ) {
         val type = if(call.argument<String>("type") == "subs") BillingClient.ProductType.SUBS else BillingClient.ProductType.INAPP
-        val params = QueryPurchaseHistoryParams.newBuilder().apply { setProductType(type) }.build()
+        // PBL 8 removed queryPurchaseHistoryAsync; queryPurchasesAsync returns only active/unconsumed purchases.
+        val params = QueryPurchasesParams.newBuilder().apply { setProductType(type) }.build()
 
-        billingClient!!.queryPurchaseHistoryAsync(
-            params,
-            PurchaseHistoryResponseListener { billingResult, purchaseHistoryRecordList ->
-                if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
-                    val errorData = BillingError.getErrorFromResponseData(billingResult.responseCode)
-                    safeChannel.error(call.method, errorData.code, errorData.message)
-                    return@PurchaseHistoryResponseListener
+        billingClient!!.queryPurchasesAsync(params) { billingResult, purchaseList ->
+            if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
+                val errorData = BillingError.getErrorFromResponseData(billingResult.responseCode)
+                safeChannel.error(call.method, errorData.code, errorData.message)
+                return@queryPurchasesAsync
+            }
+            val items = JSONArray()
+            try {
+                for (purchase in purchaseList) {
+                    val item = JSONObject()
+                    item.put("productId", purchase.products[0])
+                    item.put("transactionDate", purchase.purchaseTime)
+                    item.put("transactionReceipt", purchase.originalJson)
+                    item.put("purchaseToken", purchase.purchaseToken)
+                    item.put("dataAndroid", purchase.originalJson)
+                    item.put("signatureAndroid", purchase.signature)
+                    items.put(item)
                 }
-                val items = JSONArray()
-                try {
-                    for (purchase in purchaseHistoryRecordList!!) {
-                        val item = JSONObject()
-                        item.put("productId", purchase.products[0])
-                        item.put("transactionDate", purchase.purchaseTime)
-                        item.put("transactionReceipt", purchase.originalJson)
-                        item.put("purchaseToken", purchase.purchaseToken)
-                        item.put("dataAndroid", purchase.originalJson)
-                        item.put("signatureAndroid", purchase.signature)
-                        items.put(item)
-                    }
-                    safeChannel.success(items.toString())
-                    return@PurchaseHistoryResponseListener
-                } catch (je: JSONException) {
-                    je.printStackTrace()
-                    safeChannel.error(TAG, BillingError.E_BILLING_RESPONSE_JSON_PARSE_ERROR, je.message)
-                }
-            })
+                safeChannel.success(items.toString())
+            } catch (je: JSONException) {
+                je.printStackTrace()
+                safeChannel.error(TAG, BillingError.E_BILLING_RESPONSE_JSON_PARSE_ERROR, je.message)
+            }
+        }
     }
 
     private fun getProductsByType(
@@ -409,7 +407,8 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
 
         billingClient!!.queryProductDetailsAsync(
             QueryProductDetailsParams.newBuilder().setProductList(params).build()
-        ) { billingResult, products ->
+        ) { billingResult, queryResult ->
+            val products = queryResult.productDetailsList
             // On error
             if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
                 val errorData = BillingError.getErrorFromResponseData(billingResult.responseCode)
