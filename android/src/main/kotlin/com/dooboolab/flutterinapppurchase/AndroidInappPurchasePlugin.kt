@@ -527,19 +527,24 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
             // Get the selected offerToken from the product, or first one if this is a migrated from 4.0 product
             // or if the offerTokenIndex was not provided
             val productDetailsParamsBuilder = ProductDetailsParams.newBuilder().setProductDetails(selectedProductDetails)
-            var offerToken : String? = null
 
-            if (type == BillingClient.ProductType.SUBS) {
+            // Offer tokens only exist on subscriptions. One-time products have
+            // no subscriptionOfferDetails, so no offer token is set for them.
+            if (selectedProductDetails.productType == BillingClient.ProductType.SUBS) {
+                val offers = selectedProductDetails.subscriptionOfferDetails
+                var offerToken: String? = null
                 if (offerTokenIndex != null) {
-                    offerToken = selectedProductDetails.subscriptionOfferDetails?.get(offerTokenIndex)?.offerToken
+                    offerToken = offers?.getOrNull(offerTokenIndex)?.offerToken
                 }
                 if (offerToken == null) {
-                    offerToken = selectedProductDetails.subscriptionOfferDetails!![0].offerToken
+                    offerToken = offers?.firstOrNull()?.offerToken
                 }
-            } else {
-                offerToken = selectedProductDetails.subscriptionOfferDetails!![0].offerToken
+                if (offerToken == null) {
+                    safeChannel.error(TAG, "buyItemByType", "No subscription offer found for $productId")
+                    return
+                }
+                productDetailsParamsBuilder.setOfferToken(offerToken)
             }
-            productDetailsParamsBuilder.setOfferToken(offerToken)
 
             val productDetailsParamsList = listOf(productDetailsParamsBuilder.build())
 
@@ -567,7 +572,8 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
 
             }
         } catch (e: Exception) {
-            safeChannel.error(TAG, "buyItemByType", e.message)
+            Log.e(TAG, "buyProduct failed", e)
+            safeChannel.error(TAG, "buyItemByType", e.toString())
             return
         }
     }
