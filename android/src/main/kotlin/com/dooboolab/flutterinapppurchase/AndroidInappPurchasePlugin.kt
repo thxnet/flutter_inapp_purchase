@@ -567,7 +567,8 @@ class AndroidInappPurchasePlugin internal constructor() : MethodCallHandler,
 
             }
         } catch (e: Exception) {
-            safeChannel.error(TAG, "buyItemByType", e.message)
+			Log.e(TAG, "buyProduct failed", e)
+            safeChannel.error(TAG, "buyItemByType", e.toString())
             return
         }
     }
